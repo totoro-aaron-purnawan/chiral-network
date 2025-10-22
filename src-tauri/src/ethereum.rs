@@ -1388,3 +1388,56 @@ pub async fn get_block_details_by_number(
 
     Ok(json_response["result"].clone().into())
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionDetail {
+    pub hash: String,
+    pub from: String,
+    pub to: Option<String>,
+    pub value: String,
+    pub gas: String,
+    pub gas_price: String,
+    pub block_number: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockDetail {
+    pub number: u64,
+    pub hash: String,
+    pub miner: String,
+    pub timestamp: u64,
+    pub transactions: Vec<TransactionDetail>,
+    pub transaction_count: usize,
+}
+
+#[tauri::command]
+pub async fn get_latest_blocks(limit: u64, offset: u64) -> Result<Vec<BlockDetail>, String> {
+    let latest_block_number = get_block_number().await?;
+    let start_block = latest_block_number.saturating_sub(offset);
+    let end_block = start_block.saturating_sub(limit).max(0);
+
+    let mut blocks = Vec::new();
+
+    for number in (end_block..=start_block).rev() {
+        let block_data = get_block_details_by_number(number)
+            .await?
+            .ok_or(format!("Block {} not found", number))?;
+
+        let transactions: Vec<TransactionDetail> =
+            serde_json::from_value(block_data["transactions"].clone()).unwrap_or_else(|_| vec![]);
+
+        let block_detail = BlockDetail {
+            number: u64::from_str_radix(block_data["number"].as_str().unwrap_or("0x0").trim_start_matches("0x"), 16).unwrap_or(0),
+            hash: block_data["hash"].as_str().unwrap_or_default().to_string(),
+            miner: block_data["miner"].as_str().unwrap_or_default().to_string(),
+            timestamp: u64::from_str_radix(block_data["timestamp"].as_str().unwrap_or("0x0").trim_start_matches("0x"), 16).unwrap_or(0),
+            transaction_count: transactions.len(),
+            transactions,
+        };
+        blocks.push(block_detail);
+    }
+
+    Ok(blocks)
+}

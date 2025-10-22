@@ -13,6 +13,7 @@
   import { miningProgress } from '$lib/stores';
   import { analyticsService } from '$lib/services/analyticsService';
   import type { BandwidthStats, NetworkActivity } from '$lib/services/analyticsService';
+  import BlockExplorer from '$lib/components/BlockExplorer.svelte';
   
   let uploadedFiles: FileItem[] = []
   let downloadedFiles: FileItem[] = []
@@ -428,6 +429,10 @@
     <h1 class="text-3xl font-bold">{$t('analytics.title')}</h1>
     <p class="text-muted-foreground mt-2">{$t('analytics.subtitle')}</p>
   </div>
+
+  <Card class="p-6">
+    <BlockExplorer />
+  </Card>
 
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     <Card class="p-4">

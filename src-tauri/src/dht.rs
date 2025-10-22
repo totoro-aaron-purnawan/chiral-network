@@ -4,10 +4,10 @@ use async_std::path::Path;
 use async_trait::async_trait;
 use blockstore::{
     block::{Block, CidError},
-    InMemoryBlockstore, RedbBlockstore,
+    RedbBlockstore,
 };
 use ethers::prelude::*;
-use tokio::task::{spawn_blocking, JoinHandle};
+use tokio::task::JoinHandle;
 
 pub use cid::Cid;
 use futures::future::{BoxFuture, FutureExt};
@@ -66,12 +66,14 @@ use libp2p::{
     },
     mdns::{tokio::Behaviour as Mdns, Event as MdnsEvent},
     ping::{self, Behaviour as Ping, Event as PingEvent},
-    quic, relay, request_response as rr,
+    relay, request_response as rr,
     swarm::{behaviour::toggle, NetworkBehaviour, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder,
+    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder,
 };
 use rand::rngs::OsRng;
 const EXPECTED_PROTOCOL_VERSION: &str = "/chiral/1.0.0";
+const CONNECTION_TIMEOUT_SECS: u64 = 10; // 10 seconds timeout for connections
+const MAX_CONNECTION_ATTEMPTS: usize = 3; // Maximum attempts per peer
 const MAX_MULTIHASH_LENGHT: usize = 64;
 pub const RAW_CODEC: u64 = 0x55;
 /// Heartbeat interval (how often we refresh our provider entry).
@@ -1375,9 +1377,9 @@ async fn run_dht_node(
     let mut relay_cooldown: HashMap<PeerId, Instant> = HashMap::new();
     let mut last_tried_relay: Option<PeerId> = None;
 
-    let mut queries: HashMap<beetswap::QueryId, u32> = HashMap::new();
-    let mut downloaded_chunks: HashMap<usize, Vec<u8>> = HashMap::new();
-    let mut current_metadata: Option<FileMetadata> = None;
+    let queries: HashMap<beetswap::QueryId, u32> = HashMap::new();
+    let downloaded_chunks: HashMap<usize, Vec<u8>> = HashMap::new();
+    let current_metadata: Option<FileMetadata> = None;
 
     #[derive(Debug, Clone, Copy)]
     enum RelayErrClass {
@@ -4265,6 +4267,7 @@ pub struct DhtService {
     pending_searches: Arc<Mutex<HashMap<String, Vec<PendingSearch>>>>,
     search_counter: Arc<AtomicU64>,
     proxy_mgr: ProxyMgr,
+    connection_attempts: Arc<Mutex<HashMap<PeerId, ConnectionAttempt>>>,
     peer_selection: Arc<Mutex<PeerSelectionService>>,
     file_metadata_cache: Arc<Mutex<HashMap<String, FileMetadata>>>,
     received_chunks: Arc<Mutex<HashMap<String, HashMap<u32, FileChunk>>>>,
@@ -4681,7 +4684,9 @@ impl DhtService {
             .expect("Failed to create libp2p transport")
             .with_behaviour(move |_| behaviour.take().expect("behaviour already taken"))?
             .with_swarm_config(
-                |c| c.with_idle_connection_timeout(Duration::from_secs(300)), // 5 minutes
+                |c| c
+                    .with_idle_connection_timeout(Duration::from_secs(300)) // 5 minutes
+                    .with_dial_concurrency_factor(std::num::NonZeroU8::new(1).unwrap()) // Limit concurrent dial attempts
             )
             .build();
 
@@ -4854,6 +4859,7 @@ impl DhtService {
             pending_searches,
             search_counter,
             proxy_mgr,
+            connection_attempts: Arc::new(Mutex::new(HashMap::new())),
             peer_selection,
             file_metadata_cache: Arc::new(Mutex::new(HashMap::new())),
             received_chunks: received_chunks_clone,
@@ -6299,5 +6305,32 @@ mod tests {
 
         let guard = metrics.lock().await;
         assert_eq!(guard.listen_addrs.len(), 2);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ConnectionAttempt {
+    peer_id: PeerId,
+    attempts: usize,
+    last_attempt: Instant,
+}
+
+impl ConnectionAttempt {
+    fn new(peer_id: PeerId) -> Self {
+        Self {
+            peer_id,
+            attempts: 1,
+            last_attempt: Instant::now(),
+        }
+    }
+    
+    fn can_retry(&self) -> bool {
+        self.attempts < MAX_CONNECTION_ATTEMPTS && 
+        self.last_attempt.elapsed() > Duration::from_secs(30) // Wait 30 seconds between retries
+    }
+    
+    fn increment(&mut self) {
+        self.attempts += 1;
+        self.last_attempt = Instant::now();
     }
 }

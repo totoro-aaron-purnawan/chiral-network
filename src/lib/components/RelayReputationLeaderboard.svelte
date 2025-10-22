@@ -156,7 +156,7 @@
                     if (e.key === 'Enter') saveAlias(relay.peer_id);
                     if (e.key === 'Escape') cancelEditingAlias();
                   }}
-                  autofocus
+                  autofocus={false}
                 />
                 <button
                   on:click={() => saveAlias(relay.peer_id)}

@@ -40,24 +40,11 @@ use chrono;
 use dht::{DhtEvent, DhtMetricsSnapshot, DhtService, FileMetadata};
 use directories::ProjectDirs;
 use ethereum::{
-    create_new_account,
-    get_account_from_private_key,
-    get_balance,
-    get_block_number,
-    get_hashrate,
-    get_mined_blocks_count,
-    get_mining_logs,
-    get_mining_performance,
+    create_new_account, get_account_from_private_key, get_balance, get_block_number, get_hashrate,
+    get_latest_blocks, get_mined_blocks_count, get_mining_logs, get_mining_performance,
     get_mining_status, // Assuming you have a file_handler module
-    get_network_difficulty,
-    get_network_hashrate,
-    get_peer_count,
-    get_recent_mined_blocks,
-    start_mining,
-    stop_mining,
-    EthAccount,
-    GethProcess,
-    MinedBlock,
+    get_network_difficulty, get_network_hashrate, get_peer_count, get_recent_mined_blocks,
+    start_mining, stop_mining, EthAccount, GethProcess, MinedBlock,
 };
 use file_transfer::{DownloadMetricsSnapshot, FileTransferEvent, FileTransferService};
 use fs2::available_space;
@@ -3836,6 +3823,7 @@ fn main() {
             stop_miner,
             get_miner_status,
             get_miner_hashrate,
+            get_latest_blocks,
             get_current_block,
             get_network_stats,
             get_miner_logs,
